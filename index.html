@@ -141,10 +141,21 @@
   <button class="berhenti" onclick="berhentiScan()">
     Berhenti
   </button>
+<button class="berhenti" onclick="berhentiScan()">
+  Berhenti
+</button>
 <button
-  class="mulai"
+  type="button"
   onclick="muridSelanjutnya()"
-  style="background:#2563eb;">
+  style="
+    background:#2563eb;
+    color:white;
+    padding:13px 20px;
+    border:none;
+    border-radius:8px;
+    font-weight:bold;
+    cursor:pointer;
+    margin:5px;">
   Murid Selanjutnya →
 </button>
   <div class="footer">
@@ -317,6 +328,21 @@
   tampilkan("Siap! Silakan scan QR murid selanjutnya.");
 
   lanjutScan();
+}
+  function muridSelanjutnya() {
+  if (!scanner || !scanAktif) {
+    tampilkan("Silakan buka kamera terlebih dahulu.");
+    return;
+  }
+
+  if (sedangMemproses) {
+    tampilkan("Tunggu proses absensi selesai terlebih dahulu.");
+    return;
+  }
+
+  tampilkan("Siap! Silakan scan QR murid selanjutnya.");
+
+  scanner.resume();
 }
 </script>
 
