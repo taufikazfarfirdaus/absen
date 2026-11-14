@@ -141,7 +141,12 @@
   <button class="berhenti" onclick="berhentiScan()">
     Berhenti
   </button>
-
+<button
+  class="mulai"
+  onclick="muridSelanjutnya()"
+  style="background:#2563eb;">
+  Murid Selanjutnya →
+</button>
   <div class="footer">
     Sistem Absensi Digital MTs Riyadhus Sholihin
   </div>
@@ -300,6 +305,18 @@
     window.location.href =
       "https://script.google.com/macros/s/AKfycby5415dKDvpm-EcCBXaeb5Et2ADePvwQCTfkuqL1Bx20bqoW6Blwkk7hGOZxHHXN_Yk/exec";
   }
+}
+  function muridSelanjutnya() {
+  if (!scanner || !scanAktif) {
+    tampilkan("Silakan buka kamera terlebih dahulu.");
+    return;
+  }
+
+  sedangMemproses = false;
+
+  tampilkan("Siap! Silakan scan QR murid selanjutnya.");
+
+  lanjutScan();
 }
 </script>
 
