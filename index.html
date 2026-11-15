@@ -36,7 +36,7 @@
       color: white;
       padding: 22px;
       border-radius: 12px;
-      margin-bottom: 22px;
+      margin-bottom: 20px;
     }
 
     .header h2 {
@@ -59,12 +59,7 @@
       text-decoration: none;
       font-weight: bold;
       font-size: 14px;
-      margin: 0 0 15px;
-      transition: background 0.2s;
-    }
-
-    .kembali:hover {
-      background: #1d4ed8;
+      margin-bottom: 15px;
     }
 
     #reader {
@@ -89,6 +84,12 @@
       font-weight: bold;
       cursor: pointer;
       margin: 5px;
+      font-size: 14px;
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
     }
 
     .mulai {
@@ -99,6 +100,15 @@
     .berhenti {
       background: #fee2e2;
       color: #b91c1c;
+    }
+
+    .selanjutnya {
+      background: #2563eb;
+      color: white;
+    }
+
+    [hidden] {
+      display: none !important;
     }
 
     .footer {
@@ -118,15 +128,14 @@
     <p>Scanner QR Code Absensi Siswa</p>
   </div>
 
-  <!-- TOMBOL KEMBALI KE DASHBOARD -->
-<button
-  type="button"
-  class="kembali"
-  onclick="kembaliDashboard()">
-  ← Kembali ke Dashboard Utama
-</button>
+  <a
+    class="kembali"
+    href="https://script.google.com/macros/s/AKfycby5415dKDvpm-EcCBXaeb5Et2ADePvwQCTfkuqL1Bx20bqoW6Blwkk7hGOZxHHXN_Yk/exec">
+    ← Kembali ke Dashboard Utama
+  </a>
+
   <h3>Silakan Scan QR Siswa</h3>
-  <p>Arahkan kamera laptop ke QR Code siswa.</p>
+  <p>Arahkan kamera ke QR Code siswa.</p>
 
   <div id="reader"></div>
 
@@ -134,30 +143,31 @@
     Menunggu kamera dibuka...
   </div>
 
-  <button class="mulai" onclick="mulaiScan()">
+  <button
+    type="button"
+    class="mulai"
+    id="btnMulai"
+    onclick="mulaiScan()">
     Buka Kamera
   </button>
 
-  <button class="berhenti" onclick="berhentiScan()">
+  <button
+    type="button"
+    class="berhenti"
+    id="btnBerhenti"
+    onclick="berhentiScan()">
     Berhenti
   </button>
-<button class="berhenti" onclick="berhentiScan()">
-  Berhenti
-</button>
-<button
-  type="button"
-  onclick="muridSelanjutnya()"
-  style="
-    background:#2563eb;
-    color:white;
-    padding:13px 20px;
-    border:none;
-    border-radius:8px;
-    font-weight:bold;
-    cursor:pointer;
-    margin:5px;">
-  Murid Selanjutnya →
-</button>
+
+  <button
+    type="button"
+    class="selanjutnya"
+    id="btnSelanjutnya"
+    onclick="muridSelanjutnya()"
+    hidden>
+    Murid Selanjutnya →
+  </button>
+
   <div class="footer">
     Sistem Absensi Digital MTs Riyadhus Sholihin
   </div>
@@ -165,184 +175,402 @@
 </div>
 
 <script>
-  // URL Web App Apps Script
-  const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxVtvjX1HJ1iZ-hhYrdxEiAdlcUnTp-mWCLkRnmm2JfVbGAaKRvcVX_uygsYzgTfYHe/exec";
-  let scanner = null;
-  let sedangMemproses = false;
-  let scanAktif = false;
 
+  // URL WEB APP GOOGLE APPS SCRIPT
+  const SCRIPT_URL =
+    "https://script.google.com/macros/s/AKfycbxVtvjX1HJ1iZ-hhYrdxEiAdlcUnTp-mWCLkRnmm2JfVbGAaKRvcVX_uygsYzgTfYHe/exec";
+
+  let scanner = null;
+  let scanAktif = false;
+  let sedangMemproses = false;
+  let menungguMuridBerikutnya = false;
+
+  let timeoutAbsensi = null;
+  let scriptAbsensi = null;
+  let callbackAktif = null;
+  let nomorPermintaan = 0;
+
+  const tombolSelanjutnya =
+    document.getElementById("btnSelanjutnya");
+
+  const tombolMulai =
+    document.getElementById("btnMulai");
+
+  const tombolBerhenti =
+    document.getElementById("btnBerhenti");
+
+
+  // MENAMPILKAN PESAN
   function tampilkan(pesan) {
     document.getElementById("hasil").textContent = pesan;
   }
 
+
+  // MEMBERSIHKAN PERMINTAAN ABSENSI
+  function bersihkanPermintaan() {
+
+    if (timeoutAbsensi) {
+      clearTimeout(timeoutAbsensi);
+      timeoutAbsensi = null;
+    }
+
+    if (callbackAktif) {
+      delete window[callbackAktif];
+      callbackAktif = null;
+    }
+
+    if (scriptAbsensi) {
+      scriptAbsensi.remove();
+      scriptAbsensi = null;
+    }
+  }
+
+
+  // MENAMPILKAN HASIL DAN MENUNGGU MURID BERIKUTNYA
+  function selesaiMemproses(pesan) {
+
+    sedangMemproses = false;
+    menungguMuridBerikutnya = true;
+
+    tampilkan(pesan);
+
+    tombolSelanjutnya.hidden = false;
+    tombolSelanjutnya.disabled = false;
+  }
+
+
+  // MENGIRIM DATA ABSENSI KE APPS SCRIPT
   function kirimAbsensi(token) {
+
+    const permintaanSekarang = ++nomorPermintaan;
+
     tampilkan("Memeriksa data siswa...");
 
     const callbackName =
-      "hasilAbsensi_" + Date.now() + "_" +
+      "hasilAbsensi_" +
+      Date.now() + "_" +
       Math.floor(Math.random() * 100000);
 
     const script = document.createElement("script");
 
+    callbackAktif = callbackName;
+    scriptAbsensi = script;
+
     let selesai = false;
 
-    const timeout = setTimeout(function() {
-      if (selesai) return;
+    function akhiriPermintaan() {
+
+      if (selesai) return false;
+
       selesai = true;
+      bersihkanPermintaan();
 
-      delete window[callbackName];
-      script.remove();
+      return true;
+    }
 
-      sedangMemproses = false;
-      tampilkan("Waktu tunggu habis. Periksa koneksi atau URL Apps Script.");
-      lanjutScan();
+
+    // BATAS WAKTU PERMINTAAN
+    timeoutAbsensi = setTimeout(function() {
+
+      if (permintaanSekarang !== nomorPermintaan) return;
+
+      if (!akhiriPermintaan()) return;
+
+      selesaiMemproses(
+        "WAKTU TUNGGU HABIS\n\n" +
+        "Tidak ada respons dari server.\n" +
+        "Periksa koneksi internet lalu lanjutkan."
+      );
+
     }, 20000);
 
-    window[callbackName] = function(hasil) {
-      if (selesai) return;
-      selesai = true;
 
-      clearTimeout(timeout);
-      delete window[callbackName];
-      script.remove();
+    // JIKA SERVER MEMBERIKAN RESPONS
+    window[callbackName] = function(hasil) {
+
+      if (permintaanSekarang !== nomorPermintaan) return;
+
+      if (!akhiriPermintaan()) return;
+
+      if (!hasil) {
+
+        selesaiMemproses(
+          "Respons server tidak valid.\n" +
+          "Silakan periksa koneksi."
+        );
+
+        return;
+      }
 
       if (hasil.sukses) {
-        tampilkan(
-          "ABSENSI BERHASIL\n" +
+
+        selesaiMemproses(
+          "ABSENSI BERHASIL\n\n" +
           "Nama: " + hasil.nama + "\n" +
           "Kelas: " + hasil.kelas + "\n" +
           "Tanggal: " + hasil.tanggal + "\n" +
           "Jam: " + hasil.jam
         );
+
       } else {
-        tampilkan("ABSENSI DITOLAK\n" + hasil.pesan);
+
+        selesaiMemproses(
+          "ABSENSI DITOLAK\n\n" +
+          hasil.pesan
+        );
+
       }
 
-      setTimeout(function() {
-        sedangMemproses = false;
-        lanjutScan();
-      }, 2500);
     };
 
+
+    // JIKA GAGAL MENGHUBUNGI SERVER
     script.onerror = function() {
-      if (selesai) return;
-      selesai = true;
 
-      clearTimeout(timeout);
-      delete window[callbackName];
-      script.remove();
+      if (permintaanSekarang !== nomorPermintaan) return;
 
-      sedangMemproses = false;
-      tampilkan("Gagal menghubungi Apps Script. Periksa URL dan deployment.");
-      lanjutScan();
+      if (!akhiriPermintaan()) return;
+
+      selesaiMemproses(
+        "GAGAL MENGHUBUNGI SERVER\n\n" +
+        "Periksa URL Apps Script dan koneksi internet."
+      );
+
     };
 
-    const url = new URL(SCRIPT_URL);
-    url.searchParams.set("action", "scan");
-    url.searchParams.set("qrToken", token);
-    url.searchParams.set("callback", callbackName);
 
-    script.src = url.toString();
-    document.body.appendChild(script);
-  }
+    // MEMBUAT URL JSONP
+    try {
 
-  function lanjutScan() {
-    if (scanner && scanAktif) {
-      scanner.resume();
+      const url = new URL(SCRIPT_URL);
+
+      url.searchParams.set("action", "scan");
+      url.searchParams.set("qrToken", token);
+      url.searchParams.set("callback", callbackName);
+
+      script.src = url.toString();
+
+      document.body.appendChild(script);
+
+    } catch (error) {
+
+      if (akhiriPermintaan()) {
+        selesaiMemproses(
+          "Terjadi kesalahan URL:\n" + error.message
+        );
+      }
+
     }
+
   }
 
-  function mulaiScan() {
-    if (scanner) return;
 
-    if (!SCRIPT_URL.startsWith("https://script.google.com/")) {
-      tampilkan("URL Apps Script belum diisi dengan benar.");
+  // KETIKA QR BERHASIL DIBACA
+  function qrBerhasil(token) {
+
+    if (
+      sedangMemproses ||
+      menungguMuridBerikutnya ||
+      !scanAktif
+    ) {
       return;
     }
 
-    scanner = new Html5Qrcode("reader");
+    sedangMemproses = true;
 
-    scanner.start(
-      { facingMode: "environment" },
-      {
-        fps: 10,
-        qrbox: { width: 250, height: 250 }
-      },
-      function(token) {
-        if (sedangMemproses) return;
+    tombolSelanjutnya.hidden = true;
 
-        sedangMemproses = true;
-        scanner.pause(true);
+    // JEDA SCANNER SELAMA PROSES ABSENSI
+    scanner.pause(true);
 
-        kirimAbsensi(token);
-      }
-    ).then(function() {
-      scanAktif = true;
-      tampilkan("Kamera aktif. Silakan scan QR siswa.");
-    }).catch(function(error) {
-      scanner = null;
-      scanAktif = false;
-      tampilkan("Kamera gagal dibuka: " + error);
-    });
+    kirimAbsensi(token);
+
   }
 
-  function berhentiScan() {
-    scanAktif = false;
+
+  // MEMULAI KAMERA
+  async function mulaiScan() {
+
+    if (scanner || scanAktif) return;
+
+    if (!window.Html5Qrcode) {
+
+      tampilkan(
+        "Library scanner gagal dimuat.\n" +
+        "Periksa koneksi internet."
+      );
+
+      return;
+    }
+
+    if (!navigator.mediaDevices) {
+
+      tampilkan(
+        "Browser tidak mendukung akses kamera.\n" +
+        "Gunakan halaman HTTPS."
+      );
+
+      return;
+    }
+
+    tombolMulai.disabled = true;
+
+    tampilkan("Menghubungkan kamera...");
+
+    try {
+
+      const kamera = await Html5Qrcode.getCameras();
+
+      if (!kamera || kamera.length === 0) {
+        throw new Error("Kamera tidak ditemukan.");
+      }
+
+      // PILIH KAMERA BELAKANG JIKA TERSEDIA
+      const kameraPilihan =
+        kamera.find(k =>
+          /back|rear|environment|belakang/i.test(k.label)
+        ) || kamera[0];
+
+      scanner = new Html5Qrcode("reader");
+
+      await scanner.start(
+        kameraPilihan.id,
+        {
+          fps: 10,
+          qrbox: {
+            width: 250,
+            height: 250
+          },
+          aspectRatio: 1
+        },
+        qrBerhasil,
+        function() {
+          // Abaikan QR yang belum terbaca.
+        }
+      );
+
+      scanAktif = true;
+      sedangMemproses = false;
+      menungguMuridBerikutnya = false;
+
+      tampilkan(
+        "KAMERA AKTIF\n\n" +
+        "Silakan arahkan kamera ke QR Code siswa."
+      );
+
+    } catch (error) {
+
+      scanner = null;
+      scanAktif = false;
+
+      tampilkan(
+        "KAMERA GAGAL DIBUKA\n\n" +
+        error.message
+      );
+
+    } finally {
+
+      tombolMulai.disabled = false;
+
+    }
+
+  }
+
+
+  // TOMBOL MURID SELANJUTNYA
+  function muridSelanjutnya() {
+
+    if (!scanner || !scanAktif) {
+
+      tampilkan("Silakan buka kamera terlebih dahulu.");
+
+      return;
+    }
+
+    if (sedangMemproses) {
+
+      tampilkan("Tunggu proses absensi selesai.");
+
+      return;
+    }
+
+    if (!menungguMuridBerikutnya) {
+
+      tampilkan("Scan QR siswa terlebih dahulu.");
+
+      return;
+    }
+
+    menungguMuridBerikutnya = false;
+
+    tombolSelanjutnya.hidden = true;
+
+    tampilkan(
+      "SIAP MEMINDAI\n\n" +
+      "Silakan arahkan kamera ke QR siswa berikutnya."
+    );
+
+    try {
+
+      scanner.resume();
+
+    } catch (error) {
+
+      tampilkan(
+        "Gagal melanjutkan scanner: " + error.message
+      );
+
+    }
+
+  }
+
+
+  // MENGHENTIKAN KAMERA
+  async function berhentiScan() {
 
     if (!scanner) {
+
       tampilkan("Kamera belum aktif.");
+
       return;
     }
 
     const scannerLama = scanner;
-    scanner = null;
+
+    // Membatalkan respons yang masih tertunda
+    nomorPermintaan++;
+
+    bersihkanPermintaan();
+
+    scanAktif = false;
     sedangMemproses = false;
+    menungguMuridBerikutnya = false;
 
-    scannerLama.stop().then(function() {
+    tombolSelanjutnya.hidden = true;
+
+    scanner = null;
+
+    tampilkan("Menghentikan kamera...");
+
+    try {
+
+      await scannerLama.stop();
+
       scannerLama.clear();
-      tampilkan("Pemindaian dihentikan.");
-    }).catch(function(error) {
-      tampilkan("Gagal menghentikan kamera: " + error);
-    });
-  }
-  function kembaliDashboard() {
-  if (
-    document.referrer.startsWith("https://script.google.com/") &&
-    window.history.length > 1
-  ) {
-    window.history.back();
-  } else {
-    window.location.href =
-      "https://script.google.com/macros/s/AKfycby5415dKDvpm-EcCBXaeb5Et2ADePvwQCTfkuqL1Bx20bqoW6Blwkk7hGOZxHHXN_Yk/exec";
-  }
-}
-  function muridSelanjutnya() {
-  if (!scanner || !scanAktif) {
-    tampilkan("Silakan buka kamera terlebih dahulu.");
-    return;
+
+      tampilkan("Pemindaian berhasil dihentikan.");
+
+    } catch (error) {
+
+      tampilkan(
+        "Kamera dihentikan atau gagal dihentikan: " +
+        error.message
+      );
+
+    }
+
   }
 
-  sedangMemproses = false;
-
-  tampilkan("Siap! Silakan scan QR murid selanjutnya.");
-
-  lanjutScan();
-}
-  function muridSelanjutnya() {
-  if (!scanner || !scanAktif) {
-    tampilkan("Silakan buka kamera terlebih dahulu.");
-    return;
-  }
-
-  if (sedangMemproses) {
-    tampilkan("Tunggu proses absensi selesai terlebih dahulu.");
-    return;
-  }
-
-  tampilkan("Siap! Silakan scan QR murid selanjutnya.");
-
-  scanner.resume();
-}
 </script>
 
 </body>
